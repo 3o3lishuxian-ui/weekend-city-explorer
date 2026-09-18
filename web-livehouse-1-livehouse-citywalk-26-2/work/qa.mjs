@@ -1,0 +1,65 @@
+import { chromium } from '/Users/lishuxian/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
+import fs from 'node:fs';
+
+const browser = await chromium.launch({ headless: true, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const errors = [];
+page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+page.on('pageerror', e => errors.push(e.message));
+await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+await page.evaluate(() => localStorage.clear());
+await page.reload({ waitUntil: 'networkidle' });
+const result = {};
+result.cards = await page.locator('.activity-card').count();
+result.desktopNav = await page.locator('.desktop-nav').isVisible();
+await page.locator('#discoverSearch').fill('咖啡');
+result.searchTitles = await page.locator('.activity-card h3').allInnerTexts();
+await page.locator('#clearSearch').click();
+await page.locator('[data-filter-group="distance"] [data-value="1"]').click();
+result.within1km = await page.locator('.activity-card .meta div:nth-child(2)').allInnerTexts();
+await page.locator('[data-filter-group="distance"] [data-value="全部"]').click();
+await page.locator('#budgetMin').fill('50');
+await page.locator('#budgetMax').fill('90');
+await page.locator('#applyBudget').click();
+result.customBudgetPrices = await page.locator('.activity-card .price').allInnerTexts();
+await page.locator('#discoverSearch').fill('雨天');
+await page.reload({ waitUntil: 'networkidle' });
+result.filterPersisted = {
+  query: await page.locator('#discoverSearch').inputValue(),
+  min: await page.locator('#budgetMin').inputValue(),
+  max: await page.locator('#budgetMax').inputValue()
+};
+await page.locator('#resetFilters').click();
+await page.getByRole('button', { name: '周日', exact: true }).first().click();
+result.sundayHint = await page.locator('#weatherHint').innerText();
+await page.locator('.like-card').first().click();
+result.likeSaved = await page.evaluate(() => JSON.parse(localStorage.getItem('weekend-likes') || '[]').length);
+await page.locator('.card-open').first().click();
+result.detailOpen = await page.locator('.detail-sheet.open').isVisible();
+await page.locator('[data-detail-plan]').click();
+result.planSaved = await page.evaluate(() => JSON.parse(localStorage.getItem('weekend-plans-v2') || '[]').length);
+await page.locator('.detail-close').click();
+await page.locator('.desktop-nav [data-view="plan"]').click();
+result.planVisible = await page.locator('.date-group').count();
+result.summary = await page.locator('#planSummary').innerText();
+await page.reload({ waitUntil: 'networkidle' });
+result.planPersisted = await page.evaluate(() => JSON.parse(localStorage.getItem('weekend-plans-v2') || '[]').length);
+await page.locator('.desktop-nav [data-view="ai"]').click();
+await page.locator('#aiPreference [data-value="sport"]').click();
+await page.locator('#aiSubmit').click();
+await page.locator('#aiResults.show').waitFor({ timeout: 3000 });
+result.aiSport = await page.locator('.ai-plan-head h3').innerText();
+await page.locator('#adjustPrefs').click();
+await page.locator('#aiPreference [data-value="food"]').click();
+await page.locator('#aiSubmit').click();
+await page.locator('#aiResults.show').waitFor({ timeout: 3000 });
+result.aiFood = await page.locator('.ai-plan-head h3').innerText();
+await page.screenshot({ path: 'work/desktop.png', fullPage: true });
+await page.setViewportSize({ width: 390, height: 844 });
+await page.locator('.mobile-nav [data-view="discover"]').click();
+result.mobileNav = await page.locator('.mobile-nav').isVisible();
+result.horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+await page.screenshot({ path: 'work/mobile.png', fullPage: true });
+result.errors = errors;
+fs.writeFileSync('work/qa-result.json', JSON.stringify(result, null, 2));
+await browser.close();
